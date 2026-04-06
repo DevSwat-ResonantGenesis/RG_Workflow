@@ -526,6 +526,66 @@ async def list_events(
     ]
 
 
+@router.get("/workflows/stats")
+async def workflow_stats(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Get workflow statistics for the current user."""
+    header_user_id = request.headers.get("x-user-id")
+    if not header_user_id:
+        raise HTTPException(status_code=401, detail="User ID required")
+
+    from sqlalchemy import func
+
+    # Total workflows
+    total_result = await session.execute(
+        select(func.count(WorkflowDefinition.id))
+        .where(WorkflowDefinition.user_id == header_user_id)
+    )
+    total_workflows = total_result.scalar() or 0
+
+    # Enabled workflows
+    enabled_result = await session.execute(
+        select(func.count(WorkflowDefinition.id))
+        .where(WorkflowDefinition.user_id == header_user_id)
+        .where(WorkflowDefinition.enabled == True)
+    )
+    enabled_workflows = enabled_result.scalar() or 0
+
+    # Total runs
+    total_runs_result = await session.execute(
+        select(func.count(WorkflowRun.id))
+        .where(WorkflowRun.user_id == header_user_id)
+    )
+    total_runs = total_runs_result.scalar() or 0
+
+    # Completed runs
+    completed_result = await session.execute(
+        select(func.count(WorkflowRun.id))
+        .where(WorkflowRun.user_id == header_user_id)
+        .where(WorkflowRun.status == "completed")
+    )
+    completed_runs = completed_result.scalar() or 0
+
+    # Failed runs
+    failed_result = await session.execute(
+        select(func.count(WorkflowRun.id))
+        .where(WorkflowRun.user_id == header_user_id)
+        .where(WorkflowRun.status == "failed")
+    )
+    failed_runs = failed_result.scalar() or 0
+
+    return {
+        "total_workflows": total_workflows,
+        "enabled_workflows": enabled_workflows,
+        "total_runs": total_runs,
+        "completed_runs": completed_runs,
+        "failed_runs": failed_runs,
+        "success_rate": round((completed_runs / total_runs * 100), 1) if total_runs > 0 else 0,
+    }
+
+
 @router.get("/health")
 async def health():
     return {"service": "workflow", "status": "ok"}
